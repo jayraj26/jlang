@@ -1,4 +1,4 @@
-import { run } from "./Lexer.js";
+import { run } from "./test.js";
 
 process.stdin.setEncoding("utf-8");
 
@@ -6,15 +6,12 @@ process.stdout.write("jayraj>>");
 
 process.stdin.on("data", (data) => {
   const input = data.toString().trim();
-  if (input.trim() === "" || input.trim() === " ") {
-    process.stdout.write("jayraj>>");
-    return;
-  }
+  const [result, error] = run("<stdin>", input);
+
   if (input === "\u0003") {
     console.log("Goodbye!");
     process.exit();
   } else {
-    const [result, error] = run("<stdin>", input);
     if (error) {
       console.log(error.toString());
       process.exit();
