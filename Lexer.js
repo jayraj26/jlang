@@ -2408,7 +2408,8 @@ class Interpretor {
     let res = new RTResult();
     let value = [];
     for (let element of node.element_nodes) {
-      value.push(res.register(this.visit(element, context)).value);
+      let el = res.register(this.visit(element, context));
+      value.push(el.value);
       if (res.should_return()) return res;
       // console.log("visit_ListNode_context", context);
       // console.log("visit_ListNode_el", el);
@@ -2604,7 +2605,7 @@ class Interpretor {
         break;
       }
 
-      elements.push(val);
+      elements.push(val.value);
     }
 
     return res.success(
