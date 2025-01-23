@@ -44,12 +44,15 @@ const keywords = [
   "WHILE",
   "FUNC",
   "END",
+  "RETURN",
+  "CONTINUE",
+  "BREAK",
 ];
 // HELPER CODE ***********************************
 
 // ***********************************
 
-class Error {
+class Errors {
   constructor(pos_start, pos_end, error_msg, details) {
     this.pos_start = pos_start;
     this.pos_end = pos_end;
@@ -66,26 +69,26 @@ class Error {
   }
 }
 
-class IllegalSyntaxError extends Error {
+class IllegalSyntaxError extends Errors {
   constructor(pos_start, pos_end, message) {
     super(pos_start, pos_end, "Illegal Syntax", message);
   }
 }
 
-class RTError extends Error {
+class RTError extends Errors {
   constructor(pos_start, pos_end, details = " ", context) {
     super(pos_start, pos_end, "Runtime error:", details);
   }
 }
 
-class IllegalCharectorError extends Error {
+class IllegalCharectorError extends Errors {
   constructor(pos_start, pos_end, message) {
     super(pos_start, pos_end, "Illegal Character", message);
-    // Error.captureStackTrace(this, this.constructor);
+    // Errors.captureStackTrace(this, this.constructor);
   }
 }
 
-class ExpectedCharError extends Error {
+class ExpectedCharError extends Errors {
   constructor(pos_start, pos_end, details) {
     super(pos_start, pos_end, "Expected Charector", details);
   }
@@ -271,7 +274,7 @@ class IfNode {
     this.else_case = else_case;
     this.pos_start = cases[0][0].pos_start;
     this.pos_end =
-      this.else_case?.pos_end || cases[cases.length - 1][0].pos_end;
+      this.else_case?.[0].pos_end || cases[cases.length - 1][0].pos_end;
   }
 }
 
@@ -281,13 +284,15 @@ class ForNode {
     start_value_node,
     end_value_node,
     step_value_node,
-    body_node
+    body_node,
+    should_return_null
   ) {
     this.var_name_tok = var_name_tok;
     this.start_value_node = start_value_node;
     this.end_value_node = end_value_node;
     this.step_value_node = step_value_node;
     this.body_node = body_node;
+    this.should_return_null = should_return_null;
 
     this.pos_start = this.var_name_tok.pos_start;
     this.pos_end = this.body_node.pos_end;
@@ -295,9 +300,10 @@ class ForNode {
 }
 
 class WhileNode {
-  constructor(condition_node, body_node) {
+  constructor(condition_node, body_node, should_return_null) {
     this.condition_node = condition_node;
     this.body_node = body_node;
+    this.should_return_null = should_return_null;
 
     this.pos_start = this.condition_node.pos_start;
     this.pos_end = this.body_node.pos_end;
@@ -305,10 +311,11 @@ class WhileNode {
 }
 
 class FuncDefNode {
-  constructor(var_name_tok, arg_name_toks, body_node) {
+  constructor(var_name_tok, arg_name_toks, body_node, should_auto_return) {
     this.var_name_tok = var_name_tok;
     this.arg_name_toks = arg_name_toks;
     this.body_node = body_node;
+    this.should_auto_return = should_auto_return;
 
     if (this.var_name_tok) {
       this.pos_start = this.var_name_tok.pos_start;
@@ -356,6 +363,28 @@ class CallNode {
   }
 }
 
+class ReturnNode {
+  constructor(node_to_return, pos_start, pos_end) {
+    this.node_to_return = node_to_return;
+    this.pos_start = pos_start;
+    this.pos_end = pos_end;
+  }
+}
+
+class ContinueNode {
+  constructor(pos_start, pos_end) {
+    this.pos_start = pos_start;
+    this.pos_end = pos_end;
+  }
+}
+
+class BreakNode {
+  constructor(pos_start, pos_end) {
+    this.pos_start = pos_start;
+    this.pos_end = pos_end;
+  }
+}
+
 // LEXER ******************************
 
 // *******************************
@@ -377,7 +406,7 @@ class Lexer {
   make_number() {
     let number = "";
     let dot_count = 0;
-    let start_pos = this.pos.copy();
+    let pos_start = this.pos.copy();
     while (
       (this.currentChar !== null && /\d/.test(this.currentChar)) ||
       this.currentChar == "."
@@ -392,9 +421,9 @@ class Lexer {
       this.advance();
     }
     if (dot_count) {
-      return new Token(TokenType.FLOAT, number, start_pos, this.pos).toString();
+      return new Token(TokenType.FLOAT, number, pos_start, this.pos).toString();
     }
-    return new Token(TokenType.INTEGER, number, start_pos, this.pos).toString();
+    return new Token(TokenType.INTEGER, number, pos_start, this.pos).toString();
   }
 
   make_identifier(tok) {
@@ -426,56 +455,56 @@ class Lexer {
   }
 
   make_equals() {
-    let start_pos = this.pos.copy();
+    let pos_start = this.pos.copy();
 
     if (this.currentChar === "=") {
       this.advance();
       if (this.currentChar === "=") {
         return [
-          new Token(TokenType.DE, "==", start_pos, this.currentChar.pos),
+          new Token(TokenType.DE, "==", pos_start, this.currentChar.pos),
           null,
         ];
       }
-      return [new Token(TokenType.EQUALS, "=", start_pos, start_pos), null];
+      return [new Token(TokenType.EQUALS, "=", pos_start, pos_start), null];
     }
     this.advance();
   }
 
   make_greater_than() {
-    let start_pos = this.pos.copy();
+    let pos_start = this.pos.copy();
 
     if (this.currentChar === ">") {
       this.advance();
       if (this.currentChar === "=") {
         return [
-          new Token(TokenType.GTE, ">=", start_pos, this.currentChar.pos),
+          new Token(TokenType.GTE, ">=", pos_start, this.currentChar.pos),
           null,
         ];
       }
-      return [new Token(TokenType.GT, ">", start_pos, start_pos), null];
+      return [new Token(TokenType.GT, ">", pos_start, pos_start), null];
     }
     this.advance();
   }
 
   make_less_than() {
-    let start_pos = this.pos.copy();
+    let pos_start = this.pos.copy();
 
     if (this.currentChar === "<") {
       this.advance();
       if (this.currentChar === "=") {
         return [
-          new Token(TokenType.LTE, "<=", start_pos, this.currentChar.pos),
+          new Token(TokenType.LTE, "<=", pos_start, this.currentChar.pos),
           null,
         ];
       }
-      return [new Token(TokenType.LT, "<", start_pos, start_pos), null];
+      return [new Token(TokenType.LT, "<", pos_start, pos_start), null];
     }
     this.advance();
   }
 
   make_minus_or_arrow() {
     let token_type = TokenType.MINUS;
-    let start_pos = this.pos.copy();
+    let pos_start = this.pos.copy();
     this.advance();
 
     if (this.currentChar == ">") {
@@ -486,7 +515,7 @@ class Lexer {
     return new Token(
       token_type,
       `${token_type == "MINUS" ? "-" : "->"}`,
-      start_pos,
+      pos_start,
       this.pos
     );
   }
@@ -520,8 +549,19 @@ class Lexer {
       escape_character = false;
     }
 
+    if (this.currentChar == null) {
+      return [
+        null,
+        new IllegalSyntaxError(
+          pos_start,
+          pos_start,
+          "no closing \u0022 found "
+        ),
+      ];
+    }
+
     this.advance();
-    return new Token(TokenType.STRING, str, pos_start, this.pos);
+    return [new Token(TokenType.STRING, str, pos_start, this.pos), null];
   }
 
   tokanize() {
@@ -531,10 +571,12 @@ class Lexer {
       if (this.currentChar == " ") {
         this.advance();
       } else if (["\n", ";"].includes(this.currentChar)) {
-        tokens.push(new Token(TokenType.NEWLINE, this.pos));
+        tokens.push(new Token(TokenType.NEWLINE, this.currentChar, this.pos));
         this.advance();
       } else if (this.currentChar === '"') {
-        tokens.push(this.make_string());
+        let [token, error] = this.make_string();
+        if (error) return [null, error];
+        tokens.push(token);
       } else if (this.currentChar === "+") {
         tokens.push(
           new Token(TokenType.PLUS, this.currentChar, this.pos).toString()
@@ -637,11 +679,11 @@ class ParseResult {
   }
 
   register(res) {
+    this.last_registered_advance_count = res.advance_count;
+    this.advance_count += res.advance_count;
     if (res.error) {
       this.error = res.error;
     }
-    this.last_registered_advance_count = res.advance_count;
-    this.advance_count += res.advance_count;
     return res.node;
   }
 
@@ -671,7 +713,6 @@ class Parser {
     this.tokens = tokens;
     this.token_idx = -1;
     this.cur_token = null;
-    this.test = [];
 
     this.advance();
   }
@@ -680,7 +721,6 @@ class Parser {
     this.token_idx += 1;
     this.cur_token =
       this.token_idx < this.tokens.length ? this.tokens[this.token_idx] : null;
-    // console.log("current node", this.cur_token);
     return this.cur_token;
   }
 
@@ -690,102 +730,13 @@ class Parser {
     return this.cur_token;
   }
 
-  update_current_tok() {
+  update_current_tok = () => {
     if (this.token_idx >= 0 && this.token_idx < this.tokens.length) {
       this.cur_token = this.tokens[this.token_idx];
     }
-  }
-
-  parse() {
-    let res = this.statements();
-    if (res.error && this.cur_token.type != "EOF") {
-      return res.failure(
-        new IllegalSyntaxError(
-          this.cur_token.pos_start,
-          this.cur_token.pos_end,
-          "Expected  + - * /"
-        )
-      );
-    }
-    return res;
-  }
-
-  if_expr = () => {
-    // console.log("if_expr");
-    let res = new ParseResult();
-    let cases = [];
-    let else_case = null;
-
-    if (!this.cur_token.matches("KEYWORD", "IF")) {
-      return res.failure(
-        new IllegalSyntaxError(
-          this.cur_token.pos_start,
-          this.cur_token.pos_start,
-          "Expected IF statement"
-        )
-      );
-    }
-
-    res.register_advance();
-    this.advance();
-
-    let condition = res.register(this.expr());
-    if (res.error) return res;
-
-    if (!this.cur_token.matches("KEYWORD", "THEN")) {
-      return res.failure(
-        new IllegalSyntaxError(
-          this.cur_token.pos_start,
-          this.cur_token.pos_start,
-          "Expected THEN statement"
-        )
-      );
-    }
-
-    res.register_advance();
-    this.advance();
-
-    let expr = res.register(this.expr());
-    if (res.error) return res;
-    cases.push([condition, expr]);
-
-    while (this.cur_token.matches("KEYWORD", "ELIF")) {
-      res.register_advance();
-      this.advance();
-
-      let condition = res.register(this.expr());
-      if (res.error) return res;
-
-      if (!this.cur_token.matches("KEYWORD", "THEN")) {
-        return res.error(
-          new IllegalSyntaxError(
-            this.cur_token.pos_start,
-            this.cur_token.pos_start,
-            "Expected THEN statement"
-          )
-        );
-      }
-
-      res.register_advance();
-      this.advance();
-
-      let expr = res.register(this.expr());
-      if (res.error) return res;
-      cases.push([condition, expr]);
-    }
-
-    if (this.cur_token.matches("KEYWORD", "ELSE")) {
-      res.register_advance();
-      this.advance();
-
-      else_case = res.register(this.expr());
-      if (res.error) return res;
-    }
-
-    return res.success(new IfNode(cases, else_case));
   };
 
-  for_expr() {
+  for_expr = () => {
     // console.log("for_expr");
     let res = new ParseResult();
 
@@ -802,7 +753,7 @@ class Parser {
     res.register_advance();
     this.advance();
 
-    if (!this.cur_token.type == "IDENTIFIER") {
+    if (this.cur_token.type != "IDENTIFIER") {
       return res.failure(
         new IllegalSyntaxError(
           this.cur_token.pos_start,
@@ -816,7 +767,7 @@ class Parser {
     res.register_advance();
     this.advance();
 
-    if (!this.cur_token.type == "EQUALS") {
+    if (this.cur_token.type != "EQUALS") {
       return res.failure(
         new IllegalSyntaxError(
           this.cur_token.pos_start,
@@ -871,15 +822,40 @@ class Parser {
 
     res.register_advance();
     this.advance();
-    let body = res.register(this.expr());
+
+    if (this.cur_token.type == "NEWLINE") {
+      res.register_advance();
+      this.advance();
+
+      body = res.register(this.statements());
+      if (res.error) return res;
+
+      if (!this.cur_token.matches("KEYWORD", "END")) {
+        return res.failure(
+          new IllegalSyntaxError(
+            this.cur_token.pos_start,
+            this.cur_token.pos_end,
+            "Expected 'END'"
+          )
+        );
+      }
+      res.register_advance();
+      this.advance();
+
+      return res.success(
+        new ForNode(var_name, start_value, end_value, step_value, body, true)
+      );
+    }
+
+    let body = res.register(this.statement());
     if (res.error) return res;
 
     return res.success(
-      new ForNode(var_name, start_value, end_value, step_value, body)
+      new ForNode(var_name, start_value, end_value, step_value, body, false)
     );
-  }
+  };
 
-  while_expr() {
+  while_expr = () => {
     // console.log("while_expr");
     let res = new ParseResult();
 
@@ -912,13 +888,36 @@ class Parser {
     res.register_advance();
     this.advance();
 
-    let body = res.register(this.expr());
+    if (this.cur_token.type == "NEWLINE") {
+      res.register_advance();
+      this.advance();
+
+      body = res.register(this.statements());
+      if (res.error) return res;
+
+      if (!this.cur_token.matches("KEYWORD", "END")) {
+        return res.failure(
+          new IllegalSyntaxError(
+            this.cur_token.pos_start,
+            this.cur_token.pos_end,
+            "Expected 'END'"
+          )
+        );
+      }
+
+      res.register_advance();
+      this.advance();
+
+      return res.success(new WhileNode(condition, body, true));
+    }
+
+    let body = res.register(this.statement());
     if (res.error) return res;
 
-    return res.success(new WhileNode(condition, body));
-  }
+    return res.success(new WhileNode(condition, body, false));
+  };
 
-  func_def() {
+  func_def = () => {
     // console.log("func_def");
     let res = new ParseResult();
 
@@ -940,7 +939,7 @@ class Parser {
     if (this.cur_token.type != "IDENTIFIER") {
       var_name_tok = null;
 
-      if (!this.cur_token.type == "LPAREN") {
+      if (this.cur_token.type != "LPAREN") {
         return res.failure(
           new IllegalSyntaxError(
             this.cur_token.pos_start,
@@ -956,16 +955,16 @@ class Parser {
       var_name_tok = this.cur_token;
       res.register_advance();
       this.advance();
-    }
 
-    if (!this.cur_token.type == "LPAREN") {
-      return res.failure(
-        new IllegalSyntaxError(
-          this.cur_token.pos_start,
-          this.cur_token.pos_start,
-          "Expected ( "
-        )
-      );
+      if (!this.cur_token.type == "LPAREN") {
+        return res.failure(
+          new IllegalSyntaxError(
+            this.cur_token.pos_start,
+            this.cur_token.pos_start,
+            "Expected ( "
+          )
+        );
+      }
     }
 
     res.register_advance();
@@ -1007,7 +1006,7 @@ class Parser {
       }
     }
 
-    if (!this.cur_token.type == "RPAREN") {
+    if (this.cur_token.type != "RPAREN") {
       return res.failure(
         new IllegalSyntaxError(
           this.cur_token.pos_start,
@@ -1020,12 +1019,25 @@ class Parser {
     res.register_advance();
     this.advance();
 
-    if (!this.cur_token.type == "ARROW") {
+    if (this.cur_token.type == "ARROW") {
+      res.register_advance();
+      this.advance();
+
+      let node_to_return = res.register(this.expr());
+
+      if (res.error) return res;
+
+      return res.success(
+        new FuncDefNode(var_name_tok, arg_name_toks, node_to_return, true)
+      );
+    }
+
+    if (this.cur_token.type != "NEWLINE") {
       return res.failure(
         new IllegalSyntaxError(
           this.cur_token.pos_start,
           this.cur_token.pos_start,
-          "Expected -> "
+          "Expected NEWLINE or -> "
         )
       );
     }
@@ -1033,14 +1045,26 @@ class Parser {
     res.register_advance();
     this.advance();
 
-    let node_to_return = res.register(this.expr());
-
+    let body = res.register(this.statements());
     if (res.error) return res;
 
+    if (!this.cur_token.matches("KEYWORD", "END")) {
+      return res.failure(
+        new IllegalSyntaxError(
+          this.cur_token.pos_start,
+          this.cur_token.pos_end,
+          "Expected 'END'"
+        )
+      );
+    }
+
+    res.register_advance();
+    this.advance();
+
     return res.success(
-      new FuncDefNode(var_name_tok, arg_name_toks, node_to_return)
+      new FuncDefNode(var_name_tok, arg_name_toks, body, false)
     );
-  }
+  };
 
   list_expr() {
     // console.log("list_expr");
@@ -1103,7 +1127,367 @@ class Parser {
     );
   }
 
-  atom() {
+  parse = () => {
+    let res = this.statements();
+    if (!res.error && this.cur_token.type != "EOF") {
+      return res.failure(
+        new IllegalSyntaxError(
+          this.cur_token.pos_start,
+          this.cur_token.pos_end,
+          "Token cannot appear after previous tokens"
+        )
+      );
+    }
+
+    return res;
+  };
+
+  statements() {
+    // console.log("statements");
+    let res = new ParseResult();
+    let statements = [];
+    let pos_start = this.cur_token.pos_start.copy();
+
+    while (this.cur_token.type == "NEWLINE") {
+      res.register_advance();
+      this.advance();
+    }
+
+    // Register the first expression
+    let statement = res.register(this.statement());
+    if (res.error) return res;
+    statements.push(statement);
+
+    let more_statements = true;
+
+    while (true) {
+      let newline_count = 0;
+
+      // Count newlines and advance the current token
+      while (this.cur_token.type == "NEWLINE") {
+        // console.log("new statement so continue");
+        res.register_advance();
+        this.advance();
+        newline_count += 1;
+      }
+
+      if (newline_count == 0 || this.cur_token.type == "EOF") {
+        more_statements = false;
+      }
+
+      if (!more_statements) break;
+
+      // console.log("more_statrements_found");
+      // console.log("more_statrements_res", res);
+      // console.log("more_statrements_cur_token", this.cur_token);
+      // Try registering the next expression
+      statement = res.try_register(this.statement());
+      if (!statement) {
+        this.reverse(res.to_reverse_count);
+        more_statements = false;
+        continue;
+      }
+      statements.push(statement);
+    }
+
+    return res.success(
+      new ListNode(statements, pos_start, this.cur_token.pos_end.copy())
+    );
+  }
+
+  statement = () => {
+    // console.log("statement");
+    let res = new ParseResult();
+    let pos_start = this.cur_token.pos_start.copy();
+
+    if (this.cur_token.matches("KEYWORD", "RETURN")) {
+      res.register_advance();
+      this.advance();
+
+      let expr = res.try_register(this.expr());
+      if (!expr) {
+        this.reverse(res.to_reverse_count);
+      }
+
+      return res.success(
+        new ReturnNode(expr, pos_start, this.cur_token.pos_start.copy())
+      );
+    }
+
+    if (this.cur_token.matches("KEYWORD", "CONTINUE")) {
+      res.register_advance();
+      this.advance();
+      return res.success(
+        new ContinueNode(pos_start, this.cur_token.pos_start.copy())
+      );
+    }
+
+    if (this.cur_token.matches("KEYWORD", "BREAK")) {
+      res.register_advance();
+      this.advance();
+      return res.success(
+        new BreakNode(pos_start, this.cur_token.pos_start.copy())
+      );
+    }
+
+    let expr = res.register(this.expr());
+
+    if (res.error) {
+      return res.failure(
+        new IllegalSyntaxError(
+          this.cur_token.pos_start,
+          this.cur_token.pos_end,
+          "Expected 'RETURN', 'CONTINUE', 'BREAK', 'VAR', 'IF', 'FOR', 'WHILE', 'FUN', int, float, identifier, '+', '-', '(', '[' or 'NOT'"
+        )
+      );
+    }
+
+    return res.success(expr);
+  };
+
+  expr = () => {
+    // console.log("expr");
+    if (this.cur_token.matches("KEYWORD", "var")) {
+      let result = new ParseResult();
+      result.register_advance();
+      this.advance();
+
+      if (this.cur_token.type !== "IDENTIFIER") {
+        return result.failure(
+          new IllegalSyntaxError(
+            this.cur_token.pos_start,
+            this.cur_token.pos_end,
+            "Identifier expected"
+          )
+        );
+      }
+
+      let var_name = this.cur_token;
+      result.register_advance();
+      this.advance();
+
+      if (this.cur_token.type != "EQUALS") {
+        // console.log("missing equals");
+        return result.failure(
+          new IllegalSyntaxError(
+            this.cur_token.pos_start,
+            this.cur_token.pos_end,
+            "Expected '='"
+          )
+        );
+      }
+
+      result.register_advance();
+      this.advance();
+
+      let expression = result.register(this.expr());
+      if (result.error) return result;
+      return result.success(new VarAssignNode(var_name, expression));
+    }
+
+    let res = new ParseResult();
+
+    let node = res.register(
+      this.bin_op(this.comp_expr, [
+        ["KEYWORD", "AND"],
+        ["KEYWORD", "OR"],
+      ])
+    );
+
+    if (res.error) {
+      return res.failure(
+        new IllegalSyntaxError(
+          this.cur_token.pos_start,
+          this.cur_token.pos_end,
+          "Expected VAR , ) or a number"
+        )
+      );
+    }
+
+    return res.success(node);
+  };
+
+  bin_op(func, ops, funcb = null) {
+    // console.log("bin_op");
+    if (funcb == null) {
+      funcb = func;
+    }
+
+    let res = new ParseResult();
+    // console.log("intial cur_tok", this.cur_token.type, this.cur_token.value);
+    // console.log("intial res", res);
+    // console.log("func", func, "funcb", funcb);
+    // console.log("executing left");
+    var left = res.register(func());
+
+    if (res.error) {
+      return res;
+    }
+    // console.log(
+    //   "after left cur_tok",
+    //   this.cur_token.type,
+    //   this.cur_token.value
+    // );
+    // console.log("after left res", res);
+    // console.log("bin_op_ops", ops);
+
+    while (
+      (this.cur_token && ops.includes(this.cur_token.type)) ||
+      ops.some(
+        (op) => this.cur_token.type == op[0] && this.cur_token.value === op[1]
+      )
+    ) {
+      // console.log("bin_op it should never come inside the while loop");
+      let op_token = this.cur_token;
+      res.register_advance();
+      this.advance();
+      let right = res.register(funcb());
+      if (res.error) {
+        return res;
+      }
+      left = new BinOpNode(left, op_token, right);
+    }
+
+    // console.log("bin_op_left", left);
+    return res.success(left);
+  }
+
+  comp_expr = () => {
+    // console.log("comp_expr");
+    let res = new ParseResult();
+
+    if (this.cur_token.matches("KEYWORD", "NOT")) {
+      let op_token = this.cur_token;
+      res.register_advance();
+      this.advance();
+
+      let node = res.register(this.comp_expr());
+      if (res.error) {
+        return res;
+      }
+      return res.success(new UnaryNode(op_token, node));
+    }
+
+    let node = res.register(
+      this.bin_op(this.arith_expr, [
+        "GT",
+        "LT",
+        "GTE",
+        "LTE",
+        "NE",
+        "EQUALS",
+        "DE",
+      ])
+    );
+
+    if (res.error) {
+      return res.failure(
+        new IllegalSyntaxError(
+          this.cur_token.pos_start,
+          this.cur_token.pos_end,
+          "Expected INT,FLOAT,identifier, + , - , ), NOT"
+        )
+      );
+    }
+
+    return res.success(node);
+  };
+
+  arith_expr = () => {
+    // console.log("arith_expr");
+    return this.bin_op(this.term, ["PLUS", "MINUS"]);
+  };
+
+  term = () => {
+    // console.log("term");
+    return this.bin_op(this.factor, ["MULTIPLY", "DIVIDE"]);
+  };
+
+  factor = () => {
+    // console.log("factor");
+    let res = new ParseResult();
+    let chk = this.cur_token;
+
+    if (chk && ["PLUS", "MINUS"].includes(chk.type)) {
+      res.register_advance();
+      this.advance();
+      let f = res.register(this.factor());
+
+      if (res.error) {
+        return res;
+      }
+      return res.success(new UnaryNode(chk, f));
+    }
+
+    return this.power();
+  };
+
+  power() {
+    // console.log("power");
+    return this.bin_op(this.function_call, ["POWER"], this.factor);
+  }
+
+  function_call = () => {
+    // console.log("function_call");
+    let res = new ParseResult();
+    let atom = res.register(this.atom());
+    if (res.error) {
+      console.log("functoin atom error");
+      console.log("res", res);
+      return res;
+    }
+
+    if (this.cur_token.type == "LPAREN") {
+      res.register_advance();
+      this.advance();
+
+      let call_args = [];
+
+      if (this.cur_token.type == "RPAREN") {
+        res.register_advance();
+        this.advance();
+      } else {
+        call_args.push(res.register(this.expr()));
+        if (res.error) {
+          return res.failure(
+            new IllegalSyntaxError(
+              this.cur_token.pos_start,
+              this.cur_token.pos_start,
+              "Expected , OR )"
+            )
+          );
+        }
+
+        while (this.cur_token.type == "COMMA") {
+          res.register_advance();
+          this.advance();
+
+          call_args.push(new NumberNode(this.cur_token));
+          if (res.error) return res;
+
+          res.register_advance();
+          this.advance();
+        }
+
+        if (this.cur_token.type != "RPAREN") {
+          return res.failure(
+            new IllegalSyntaxError(
+              this.cur_token.pos_start,
+              this.cur_token.pos_start,
+              "Expected )"
+            )
+          );
+        }
+        res.register_advance();
+        this.advance();
+      }
+      return res.success(new CallNode(atom, call_args));
+    }
+    // console.log("function_atom", atom);
+    return res.success(atom);
+  };
+
+  atom = () => {
     // console.log("atom");
     let res = new ParseResult();
     let chk = this.cur_token;
@@ -1152,7 +1536,7 @@ class Parser {
     } else if (chk.type == "KEYWORD" && chk.value == "IF") {
       // console.log("atom if");
       let if_expr = res.register(this.if_expr());
-      if (res.error) return res.error;
+      if (res.error) return res;
       return res.success(if_expr);
     } else if (chk.type == "KEYWORD" && chk.value == "FOR") {
       let for_expr = res.register(this.for_expr());
@@ -1163,9 +1547,9 @@ class Parser {
       if (res.error) return res.error;
       return res.success(while_expr);
     } else if (chk.type == "KEYWORD" && chk.value == "FUNC") {
-      let while_expr = res.register(this.func_def());
+      let func_expr = res.register(this.func_def());
       if (res.error) return res.error;
-      return res.success(while_expr);
+      return res.success(func_expr);
     }
 
     return res.failure(
@@ -1177,306 +1561,154 @@ class Parser {
           : "Expected INT,FLOAT,identifier, + , - or )"
       )
     );
+  };
+
+  if_expr = () => {
+    // console.log("if_expr");
+    const res = new ParseResult();
+    let all_cases = res.register(this.if_expr_cases("IF"));
+    if (res.error) return res;
+    let [cases, else_case] = all_cases;
+
+    return res.success(new IfNode(cases, else_case));
+  };
+
+  if_expr_b() {
+    // console.log("if_expr_b");
+    return this.if_expr_cases("ELIF");
   }
 
-  function_call = () => {
-    let res = new ParseResult();
-    let atom = res.register(this.atom());
-    if (res.error) return res;
+  if_expr_c() {
+    // console.log("if_expr_c");
+    const res = new ParseResult();
+    let else_case = null;
 
-    if (this.cur_token.type == "LPAREN") {
+    if (this.cur_token.matches("KEYWORD", "ELSE")) {
       res.register_advance();
       this.advance();
 
-      let call_args = [];
+      if (this.cur_token.type == "NEWLINE") {
+        res.register_advance();
+        this.advance();
 
-      if (this.cur_token.type == "RPAREN") {
+        const statements = res.register(this.statements());
+        if (res.error) return res;
+
+        else_case = [statements, true];
+
+        if (this.cur_token.matches("KEYWORD", "END")) {
+          res.register_advance();
+          this.advance();
+        } else {
+          return res.failure(
+            new IllegalSyntaxError(
+              this.cur_token.pos_start,
+              this.cur_token.pos_end,
+              "Expected 'END'"
+            )
+          );
+        }
+      } else {
+        const expr = res.register(this.statement());
+        if (res.error) return res;
+
+        else_case = [expr, false];
+      }
+    }
+
+    return res.success(else_case);
+  }
+
+  if_expr_b_or_c() {
+    // console.log("if_expr_b_or_c");
+    const res = new ParseResult();
+    let cases = [];
+    let else_case = null;
+
+    if (this.cur_token.matches("KEYWORD", "ELIF")) {
+      const all_cases = res.register(this.if_expr_b());
+      if (res.error) return res;
+
+      [cases, else_case] = all_cases;
+    } else {
+      else_case = res.register(this.if_expr_c());
+      if (res.error) return res;
+    }
+
+    return res.success([cases, else_case]);
+  }
+
+  if_expr_cases(case_keyword) {
+    // console.log("if_expr_cases");
+    const res = new ParseResult();
+    let cases = [];
+    let else_case = null;
+
+    if (!this.cur_token.matches("KEYWORD", case_keyword)) {
+      return res.failure(
+        new IllegalSyntaxError(
+          this.cur_token.pos_start,
+          this.cur_token.pos_end,
+          `Expected '${case_keyword}'`
+        )
+      );
+    }
+
+    res.register_advance();
+    this.advance();
+
+    const condition = res.register(this.expr());
+    if (res.error) return res;
+
+    if (!this.cur_token.matches("KEYWORD", "THEN")) {
+      // console.trace("no then");
+      return res.failure(
+        new IllegalSyntaxError(
+          this.cur_token.pos_start,
+          this.cur_token.pos_end,
+          "Expected 'THEN'"
+        )
+      );
+    }
+
+    res.register_advance();
+    this.advance();
+
+    if (this.cur_token.type == "NEWLINE") {
+      res.register_advance();
+      this.advance();
+
+      const statements = res.register(this.statements());
+      if (res.error) return res;
+
+      cases.push([condition, statements, true]);
+
+      if (this.cur_token.matches("KEYWORD", "END")) {
         res.register_advance();
         this.advance();
       } else {
-        call_args.push(res.register(this.expr()));
-        if (res.err) {
-          return res.failure(
-            new IllegalSyntaxError(
-              this.cur_token.pos_start,
-              this.cur_token.pos_start,
-              "Expected , OR )"
-            )
-          );
-        }
+        const all_cases = res.register(this.if_expr_b_or_c());
+        if (res.error) return res;
 
-        while (this.cur_token.type == "COMMA") {
-          res.register_advance();
-          this.advance();
-
-          call_args.push(new NumberNode(this.cur_token));
-          if (res.error) return res;
-
-          res.register_advance();
-          this.advance();
-        }
-
-        if (!this.cur_token.type == "RPAREN") {
-          return res.failure(
-            new IllegalSyntaxError(
-              this.cur_token.pos_start,
-              this.cur_token.pos_start,
-              "Expected )"
-            )
-          );
-        }
-        res.register_advance();
-        this.advance();
+        const [new_cases, new_else_case] = all_cases;
+        cases = cases.concat(new_cases);
+        else_case = new_else_case;
       }
-      return res.success(new CallNode(atom, call_args));
-    }
-    return res.success(atom);
-  };
+    } else {
+      const expr = res.register(this.statement());
+      if (res.error) return res;
 
-  power() {
-    return this.bin_op(this.function_call, ["POWER"], this.factor);
-  }
+      cases.push([condition, expr, false]);
 
-  factor() {
-    let res = new ParseResult();
-    let chk = this.cur_token;
+      const all_cases = res.register(this.if_expr_b_or_c());
+      if (res.error) return res;
 
-    if (chk && ["PLUS", "MINUS"].includes(chk.type)) {
-      res.register_advance();
-      this.advance();
-      let factor = res.register(this.factor());
-
-      if (res.error) {
-        return res;
-      }
-      return res.success(new UnaryNode(chk, factor));
+      const [new_cases, new_else_case] = all_cases;
+      cases = cases.concat(new_cases);
+      else_case = new_else_case;
     }
 
-    return this.power();
-  }
-
-  term = () => {
-    let res = new ParseResult();
-    var left = res.register(this.factor());
-
-    if (res.error) {
-      return res;
-    }
-
-    while (
-      this.cur_token &&
-      ["MULTIPLY", "DIVIDE"].includes(this.cur_token.type)
-    ) {
-      let op_token = this.cur_token;
-      res.register_advance();
-      this.advance();
-      let right = res.register(this.factor());
-
-      if (res.err) {
-        return res;
-      }
-
-      left = new BinOpNode(left, op_token, right);
-    }
-    return res.success(left);
-    // return this.bin_op(this.factor, ["MULTIPLY", "DIVIDE"]);
-  };
-
-  bin_op(func, ops, funcb = null) {
-    if (funcb === null) {
-      funcb = func;
-    }
-
-    let res = new ParseResult();
-    var left = res.register(func());
-
-    if (res.error) {
-      return res;
-    }
-
-    while (
-      (this.cur_token && ops.includes(this.cur_token.type)) ||
-      ops.some(
-        (op) => this.cur_token.type == op[0] && this.cur_token.value === op[1]
-      )
-    ) {
-      let op_token = this.cur_token;
-      res.register_advance();
-      this.advance();
-      let right = res.register(funcb());
-      if (res.err) {
-        return res;
-      }
-      left = new BinOpNode(left, op_token, right);
-    }
-    return res.success(left);
-  }
-
-  comp_expr = () => {
-    let res = new ParseResult();
-
-    if (this.cur_token.matches("KEYWORD", "NOT")) {
-      let op_token = res.register_advance();
-      this.advance();
-
-      let node = res.register(this.comp_expr());
-      if (res.error) {
-        return res;
-      }
-      return res.success(new UnaryNode(op_token, node));
-    }
-
-    let node = res.register(
-      this.bin_op(this.arith_expr, [
-        "GT",
-        "LT",
-        "GTE",
-        "LTE",
-        "NE",
-        "EQUALS",
-        "DE",
-      ])
-    );
-
-    if (res.error) {
-      return res.failure(
-        new IllegalSyntaxError(
-          this.cur_token.pos_start,
-          this.cur_token.pos_end,
-          "Expected INT,FLOAT,identifier, + , - , ), NOT"
-        )
-      );
-    }
-
-    return res.success(node);
-  };
-
-  arith_expr = () => {
-    return this.bin_op(this.term, ["PLUS", "MINUS"]);
-  };
-
-  statements() {
-    let res = new ParseResult();
-    let statements = [];
-    let pos_start = this.cur_token.pos_start.copy();
-
-    while (this.cur_token.type == "NEWLINE") {
-      res.register_advance();
-      this.advance();
-    }
-
-    // Register the first expression
-    let statement = res.register(this.expr());
-    if (res.error) return res;
-    statements.push(statement);
-
-    let more_statements = true;
-
-    while (true) {
-      let newline_count = 0;
-
-      // Count newlines and advance the current token
-      while (this.cur_token.type == "NEWLINE") {
-        res.register_advance();
-        this.advance();
-        newline_count += 1;
-      }
-
-      if (newline_count === 0) {
-        more_statements = false;
-      }
-
-      if (!more_statements) break;
-
-      // Try registering the next expression
-      statement = res.try_register(this.expr());
-      if (!statement) {
-        this.reverse(res.to_reverse_count);
-        more_statements = false;
-        continue;
-      }
-      statements.push(statement);
-    }
-
-    return res.success(
-      new ListNode(statements, pos_start, this.cur_token.pos_end.copy())
-    );
-  }
-
-  expr() {
-    if (this.cur_token.matches("KEYWORD", "var")) {
-      let result = new ParseResult();
-      result.register_advance();
-      this.advance();
-
-      if (this.cur_token.type !== "IDENTIFIER") {
-        return result.failure(
-          new IllegalSyntaxError(
-            this.cur_token.pos_start,
-            this.cur_token.pos_end,
-            "Identifier expected"
-          )
-        );
-      }
-
-      let var_name = this.cur_token;
-      result.register_advance();
-      this.advance();
-
-      if (this.cur_token.type !== "EQUALS") {
-        console.log("missing equals");
-        return result.failure(
-          new IllegalSyntaxError(
-            this.cur_token.pos_start,
-            this.cur_token.pos_end,
-            "Expected '='"
-          )
-        );
-      }
-
-      result.register_advance();
-      this.advance();
-      let expression = result.register(this.expr());
-      if (result.error) return result;
-      return result.success(new VarAssignNode(var_name, expression));
-    }
-
-    let res = new ParseResult();
-    // var left = res.register(this.term());
-    // if (res.err) {
-    //   return res;
-    // }
-
-    // while (this.cur_token && ["PLUS", "MINUS"].includes(this.cur_token.type)) {
-    //   let op_token = this.cur_token;
-    //   res.register_advance();
-    //   this.advance();
-    //   let right = res.register(this.term());
-    //   if (res.err) {
-    //     return res;
-    //   }
-    //   left = new BinOpNode(left, op_token, right);
-    // }
-
-    // return res.success(left);
-    let node = res.register(
-      this.bin_op(this.comp_expr, [
-        ["KEYWORD", "AND"],
-        ["KEYWORD", "OR"],
-      ])
-    );
-
-    if (res.err) {
-      return res.failure(
-        new IllegalSyntaxError(
-          this.cur_token.pos_start,
-          this.cur_token.pos_end,
-          "Expected VAR , ) or a number"
-        )
-      );
-    }
-
-    return res.success(node);
+    return res.success([cases, else_case]);
   }
 }
 
@@ -1561,7 +1793,7 @@ class Value {
   }
 
   copy() {
-    throw new Error("No copy method defined");
+    throw new Errors("No copy method defined");
   }
 
   isTrue() {
@@ -1905,10 +2137,11 @@ class BaseFunction extends Value {
 }
 
 class FunctionValue extends BaseFunction {
-  constructor(name, body_node, arg_names) {
+  constructor(name, body_node, arg_names, should_auto_return) {
     super(name);
     this.body_node = body_node;
     this.arg_names = arg_names;
+    this.should_auto_return = should_auto_return;
   }
 
   execute(args) {
@@ -1917,15 +2150,25 @@ class FunctionValue extends BaseFunction {
     const exec_ctx = this.generate_new_context();
 
     res.register(this.check_and_populate_args(this.arg_names, args, exec_ctx));
-    if (res.error) return res;
+    if (res.should_return()) return res;
 
     const value = res.register(interpreter.visit(this.body_node, exec_ctx));
-    if (res.error) return res;
-    return res.success(value);
+    if (res.should_return() && res.func_return_value == null) return res;
+
+    const retValue =
+      (this.should_auto_return ? value : new Placeholder()) ||
+      (res.func_return_value && new Placeholder(res.func_return_value)) ||
+      new Placeholder();
+    return res.success(retValue);
   }
 
   copy() {
-    const copy = new FunctionValue(this.name, this.body_node, this.arg_names);
+    const copy = new FunctionValue(
+      this.name,
+      this.body_node,
+      this.arg_names,
+      this.should_return_null
+    );
     copy.set_context(this.context);
     copy.set_pos(this.pos_start, this.pos_end);
     return copy;
@@ -1955,7 +2198,7 @@ class BuiltInFunction extends BaseFunction {
   }
 
   no_visit_method(node, context) {
-    throw new Error(`No execute_${this.name} method defined`);
+    throw new Errors(`No execute_${this.name} method defined`);
   }
 
   copy() {
@@ -1982,7 +2225,7 @@ BuiltInFunction.execute_print.arg_names = ["value"];
 BuiltInFunction.print = BuiltInFunction.execute_print;
 
 class Placeholder {
-  constructor(value = null) {
+  constructor(value = "") {
     this.value = value;
     this.set_pos();
     this.set_context();
@@ -2027,21 +2270,61 @@ class SymbolTable {
 
 class RTResult {
   constructor() {
+    this.reset();
+  }
+
+  reset() {
     this.value = null;
     this.error = null;
+    this.function_return_value = null;
+    this.loop_should_continue = false;
+    this.loop_should_break = false;
   }
 
   register(res) {
-    if (res.error) {
-      this.error = res.error;
-    }
+    this.error = res.error;
+    this.function_return_value = res.function_return_value;
+    this.loop_should_break = res.loop_should_break;
+    this.loop_should_continue = res.loop_should_continue;
+
     return res.value;
   }
+
   success(value) {
+    this.reset();
     this.value = value;
     return this;
   }
+
+  success_return(value) {
+    this.reset();
+    this.func_return_value = value;
+    return this;
+  }
+
+  success_continue() {
+    this.reset();
+    this.loop_should_continue = true;
+    return this;
+  }
+
+  success_break() {
+    this.reset();
+    this.loop_should_break = true;
+    return this;
+  }
+
+  should_return() {
+    return (
+      this.error ||
+      this.func_return_value ||
+      this.loop_should_continue ||
+      this.loop_should_break
+    );
+  }
+
   failure(err) {
+    this.reset();
     this.error = err;
     return this;
   }
@@ -2063,7 +2346,7 @@ class Context {
 
 class Interpretor {
   visit(node, context) {
-    // console.log("Visit", node.constructor.name);
+    console.log("Visit", node);
     const methodName = "visit_" + node.constructor.name;
     const method = this[methodName] || this.no_visit;
 
@@ -2080,8 +2363,8 @@ class Interpretor {
   visit_VarAccessNode(node, context) {
     let res = new RTResult();
     let var_name = node.var_name_tok.value;
-
     let value = context.symbol_table.get(var_name);
+
     if (!value) {
       return res.failure(
         new RTError(
@@ -2104,30 +2387,32 @@ class Interpretor {
     let res = new RTResult();
     let var_name = node.var_name_tok.value;
     let value = res.register(this.visit(node.value_node, context));
-    if (res.err) {
+
+    if (res.should_return()) {
       return res;
     }
+
     context.symbol_table.set(var_name, value);
     return res.success(value);
   }
 
   visit_NumberNode(node, context) {
     let rtresult = new RTResult();
+    let res = new Numbers(node.value)
+      .set_pos(node.pos_start, node.pos_end)
+      .set_context(context);
 
-    let res = new Numbers(node.value);
-    res.set_pos(node.pos_start, node.pos_end);
-    res.set_context(context);
-
-    return node && rtresult.success(res);
+    return rtresult.success(res);
   }
 
   visit_ListNode(node, context) {
     let res = new RTResult();
     let value = [];
-
     for (let element of node.element_nodes) {
       value.push(res.register(this.visit(element, context)).value);
-      if (res.error) return res;
+      if (res.should_return()) return res;
+      // console.log("visit_ListNode_context", context);
+      // console.log("visit_ListNode_el", el);
     }
 
     return res.success(
@@ -2140,11 +2425,11 @@ class Interpretor {
   visit_StringNode(node, context) {
     let rtresult = new RTResult();
 
-    let res = new Strings(node.value);
-    res.set_pos(node.pos_start, node.pos_end);
-    res.set_context(context);
+    let res = new Strings(node.value)
+      .set_pos(node.pos_start, node.pos_end)
+      .set_context(context);
 
-    return node && rtresult.success(res);
+    return rtresult.success(res);
   }
 
   visit_BinOpNode(node, context) {
@@ -2152,12 +2437,12 @@ class Interpretor {
     let error;
     let rtresult = new RTResult();
     let left = rtresult.register(this.visit(node.left_node, context));
-    if (rtresult.error) {
+    if (rtresult.should_return()) {
       return rtresult;
     }
 
     let right = rtresult.register(this.visit(node.right_node, context));
-    if (rtresult.error) {
+    if (rtresult.should_return()) {
       return rtresult;
     }
 
@@ -2202,7 +2487,7 @@ class Interpretor {
     let error;
     let number = rtresult.register(this.visit(node.node, context));
 
-    if (rtresult.error) {
+    if (rtresult.should_return()) {
       return rtresult;
     }
 
@@ -2216,25 +2501,51 @@ class Interpretor {
       return rtresult.failure(error);
     }
 
-    return rtresult.success(number.set_pos(node.start_pos, node.end_pos));
+    return rtresult.success(number.set_pos(node.pos_start, node.pos_end));
   }
 
   visit_IfNode(node, context) {
     let res = new RTResult();
-    for (let [condition, expr] of node.cases) {
+    for (let [condition, expr, should_return_null] of node.cases) {
       let condition_value = res.register(this.visit(condition, context));
-      if (res.error) return res.error;
+      if (res.should_return()) return res;
       if (condition_value.value) {
         let expr_value = res.register(this.visit(expr, context));
-        if (res.error) return res;
-        return res.success(expr_value);
+        if (res.should_return()) return res;
+        if (should_return_null) {
+          return res.success(new Placeholder());
+        } else {
+          if (
+            typeof expr_value.value == "string" &&
+            /^\d+(\.\d+)?$/.test(expr_value.value)
+          ) {
+            expr_value.value = Number(expr_value.value);
+            return res.success(expr_value);
+          } else {
+            return res.success(expr_value);
+          }
+        }
       }
     }
 
     if (node.else_case) {
-      let else_value = res.register(this.visit(node.else_case, context));
-      if (res.error) return res;
-      return res.success(else_value);
+      let [expr, should_return_null] = node.else_case;
+      let else_value = res.register(this.visit(expr, context));
+
+      if (res.should_return()) return res;
+      if (should_return_null) {
+        return res.success(new Placeholder());
+      } else {
+        if (
+          typeof else_value.value == "string" &&
+          /^\d+(\.\d+)?$/.test(else_value.value)
+        ) {
+          else_value.value = Number(else_value.value);
+          return res.success(else_value);
+        } else {
+          return res.success(else_value);
+        }
+      }
     }
 
     return res.success(new Placeholder());
@@ -2242,20 +2553,21 @@ class Interpretor {
 
   visit_ForNode(node, context) {
     let res = new RTResult();
+    let elements = [];
 
     // Get the start value
     let start_value = res.register(this.visit(node.start_value_node, context));
-    if (res.error) return res;
+    if (res.should_return()) return res;
 
     // Get the end value
     let end_value = res.register(this.visit(node.end_value_node, context));
-    if (res.error) return res;
+    if (res.should_return()) return res;
 
     // Get the step value, or default to 1
     let step_value;
     if (node.step_value_node) {
       step_value = res.register(this.visit(node.step_value_node, context));
-      if (res.error) return res;
+      if (res.should_return()) return res;
     } else {
       step_value = new Numbers(1); // Default step
     }
@@ -2275,30 +2587,77 @@ class Interpretor {
       i += Number(step_value.value); // Increment or decrement based on step_value
 
       // Visit the body of the loop
-      res.register(this.visit(node.body_node, context));
-      if (res.error) return res;
-      // Re-evaluate the condition to prevent infinite loop
+      let val = res.register(this.visit(node.body_node, context));
+
+      if (
+        res.should_return() &&
+        res.loop_should_continue == false &&
+        res.loop_should_break == false
+      ) {
+        return res;
+      }
+
+      if (res.loop_should_continue) {
+        continue;
+      }
+
+      if (res.loop_should_break) {
+        break;
+      }
+
+      elements.push(val);
     }
-    return res.success(new Placeholder());
+
+    return res.success(
+      node.should_return_null
+        ? new Placeholder()
+        : new Lists(elements)
+            .set_context(context)
+            .set_pos(node.pos_start, node.pos_end)
+    );
   }
 
   visit_WhileNode(node, context) {
     let res = new RTResult();
+    let elements = [];
 
     while (true) {
       // Visit the condition node and check if there is an error
       let condition = res.register(this.visit(node.condition_node, context));
-      if (res.error) return res;
+      if (res.should_return()) return res;
       // Break the loop if the condition is not true
       if (!condition.value) break;
 
-      // Visit the body of the while loop and check for errors
-      res.register(this.visit(node.body_node, context));
-      if (res.error) return res;
+      // Visit the body of the loop
+      let val = res.register(this.visit(node.body_node, context));
+
+      if (
+        res.should_return() &&
+        res.loop_should_continue == false &&
+        res.loop_should_break == false
+      ) {
+        return res;
+      }
+
+      if (res.loop_should_continue) {
+        continue;
+      }
+
+      if (res.loop_should_break) {
+        break;
+      }
+
+      elements.push(val);
     }
 
     // Return success once the loop has completed
-    return res.success(new Placeholder());
+    return res.success(
+      node.should_return_null
+        ? new Placeholder()
+        : new Lists(elements)
+            .set_context(context)
+            .set_pos(node.pos_start, node.pos_end)
+    );
   }
 
   visit_FuncDefNode(node, context) {
@@ -2307,7 +2666,12 @@ class Interpretor {
     const funcName = node.var_name_tok ? node.var_name_tok.value : null;
     const bodyNode = node.body_node;
     const argNames = node.arg_name_toks.map((argName) => argName.value);
-    const funcValue = new FunctionValue(funcName, bodyNode, argNames)
+    const funcValue = new FunctionValue(
+      funcName,
+      bodyNode,
+      argNames,
+      node.should_auto_return
+    )
       .set_context(context)
       .set_pos(node.pos_start, node.pos_end);
 
@@ -2322,24 +2686,48 @@ class Interpretor {
     const res = new RTResult();
     const args = [];
     let valueToCall = res.register(this.visit(node.node_to_call, context));
-    if (res.error) return res;
+    if (res.should_return()) return res;
     valueToCall = valueToCall.copy().set_pos(node.pos_start, node.pos_end);
     // console.log("node", node);
     // console.log("valueToCall", valueToCall);
 
     for (let argNode of node.arg_nodes) {
       args.push(res.register(this.visit(argNode, context)));
-      if (res.error) return res;
+      if (res.should_return()) return res;
     }
+
     let returnValue = res.register(valueToCall.execute(args));
     // console.log("returnValue", returnValue);
-    if (res.error) return res;
+    if (res.should_return()) return res;
 
     returnValue = returnValue
       .copy()
       .set_pos(node.pos_start, node.pos_end)
       .set_context(context);
+
     return res.success(returnValue);
+  }
+
+  visit_ReturnNode(node, context) {
+    let res = new RTResult();
+    let value;
+
+    if (node.node_to_return) {
+      value = res.register(this.visit(node.node_to_return, context));
+      if (res.should_return()) return res;
+    } else {
+      value = null;
+    }
+
+    return res.success_return(value);
+  }
+
+  visit_ContinueNode(node, context) {
+    return new RTResult().success_continue();
+  }
+
+  visit_BreakNode(node, context) {
+    return new RTResult().success_break();
   }
 }
 
@@ -2374,15 +2762,16 @@ export const run = (fn, input) => {
   const lexer = new Lexer(fn, input);
   let [tokens, error] = lexer.tokanize();
   if (error) {
+    // console.log("Lexer error", error);
     return [null, error];
   }
 
   const parser = new Parser(tokens);
   let AST = parser.parse();
   if (AST.error) {
+    console.log("AST error ", AST);
     return [null, AST.error];
   }
-
   const interpretor = new Interpretor();
   const context = new Context("<program>");
   context.symbol_table = global_symbol_table;

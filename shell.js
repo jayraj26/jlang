@@ -19,7 +19,11 @@ process.stdin.on("data", (data) => {
       console.log(error.toString());
       process.exit();
     } else if (result !== null) {
-      console.log(result);
+      if (result.length == 1) {
+        console.log(result[0]);
+      } else {
+        console.log(result);
+      }
     }
 
     process.stdout.write("jayraj>>");
