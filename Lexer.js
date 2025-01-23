@@ -2346,7 +2346,6 @@ class Context {
 
 class Interpretor {
   visit(node, context) {
-    console.log("Visit", node);
     const methodName = "visit_" + node.constructor.name;
     const method = this[methodName] || this.no_visit;
 
