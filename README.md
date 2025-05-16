@@ -1,12 +1,12 @@
 # Welcome to jlang!
 
-A Simple Toy Programming Language. Jlang is a lightweight, command-line based programming language designed for educational purposes and casual experimentation. It supports basic arithmetic operations, comparisons, conditional statements, loops, and functions with variable assignment.
+A Simple Toy REPL. Jlang is a lightweight, command-line based REPL designed for educational purposes and casual experimentation. It supports basic arithmetic operations, comparisons, conditional statements, loops, and functions with variable assignment.
 
-This language is intentionally kept simple and is not intended for production use or complex applications. It serves as an educational tool and a playground for learning fundamental programming concepts.
+This REPL is intentionally kept simple and is not intended for production use or complex applications. It serves as an educational tool and a playground for learning fundamental programming concepts.
 
 # What it has
 
-The language does not provide much but provided basic operations and assignments expected.
+The REPL does not provide much but provided basic operations and assignments expected.
 
 - Command-line interface
 - Basic arithmetic operations (+, -, \*, /)
@@ -19,7 +19,7 @@ The language does not provide much but provided basic operations and assignments
 
 ## Syntax
 
-Here is a basic syntax for looking into the language and its working.
+Here is a basic syntax for looking into the REPL and its working.
 
 | Operation                 | Syntax                                            |
 | ------------------------- | ------------------------------------------------- |
